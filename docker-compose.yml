@@ -1,0 +1,69 @@
+# Запуск всех 5 контейнеров на одной машине: docker compose up -d --build
+name: tourbook
+
+services:
+  # 1. Прокси (nginx): единственная точка входа, распределяет запросы
+  proxy:
+    build: ./proxy
+    image: tourbook-proxy
+    ports:
+      - "8080:80"
+    networks: [public_net]
+    depends_on: [frontend, tours, bookings]
+
+  # 2. Страница сайта (nginx)
+  frontend:
+    build: ./frontend
+    image: tourbook-frontend
+    networks: [public_net]
+
+  # 3. Сервис туров (Python, FastAPI)
+  tours:
+    build: ./tours
+    image: tourbook-tours
+    environment:
+      DB_HOST: db
+      DB_NAME: tourbook
+      DB_USER: tourbook
+      DB_PASSWORD: tourbook_pass
+    networks: [public_net, data_net]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # 4. Сервис бронирований (Python, FastAPI)
+  bookings:
+    build: ./bookings
+    image: tourbook-bookings
+    environment:
+      DB_HOST: db
+      DB_NAME: tourbook
+      DB_USER: tourbook
+      DB_PASSWORD: tourbook_pass
+      ADMIN_PASSWORD: admin123
+    networks: [public_net, data_net]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # 5. База данных PostgreSQL
+  db:
+    build: ./db
+    image: tourbook-db
+    environment:
+      POSTGRES_DB: tourbook
+      POSTGRES_USER: tourbook
+      POSTGRES_PASSWORD: tourbook_pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [data_net]
+
+networks:
+  # Открытая сеть: proxy, frontend и сервисы Python
+  public_net:
+  # Закрытая сеть данных: к db могут обращаться только сервисы Python, выхода в интернет нет
+  data_net:
+    internal: true
+
+volumes:
+  pgdata:

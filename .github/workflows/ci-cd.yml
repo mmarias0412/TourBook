@@ -1,0 +1,86 @@
+name: CI/CD
+
+# Запускается при каждом push в main и при pull request
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # ---------- CI: сборка образов и проверка работы 5 контейнеров ----------
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Получение кода
+        uses: actions/checkout@v4
+
+      - name: Сборка образов и запуск контейнеров
+        run: docker compose up -d --build
+
+      - name: Проверка работы
+        run: |
+          # ждём, пока сервис туров начнёт отвечать (до 2,5 минут)
+          for i in $(seq 1 30); do
+            curl -fs -o /dev/null http://localhost:8080/api/tours && break
+            sleep 5
+          done
+          # страница сайта (frontend через proxy)
+          curl -fs http://localhost:8080/ | grep TourBook > /dev/null
+          # сервис туров (tours -> db)
+          curl -fs http://localhost:8080/api/tours | grep title > /dev/null
+          # создание бронирования (bookings -> db)
+          curl -fs -X POST http://localhost:8080/api/bookings \
+            -H 'Content-Type: application/json' \
+            -d '{"tour_id": 1, "customer_name": "CI-test", "people": 2}'
+          # список бронирований для администратора
+          curl -fs -H 'X-Admin-Password: admin123' http://localhost:8080/api/bookings | grep CI-test > /dev/null
+
+      - name: Логи контейнеров (только при ошибке)
+        if: failure()
+        run: docker compose logs --tail=50
+
+      - name: Остановка контейнеров
+        if: always()
+        run: docker compose down -v
+
+  # ---------- CD: деплой в кластер Docker Swarm и проверка ----------
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Получение кода
+        uses: actions/checkout@v4
+
+      - name: Создание кластера Docker Swarm
+        run: docker swarm init
+
+      - name: Сборка образов
+        run: docker compose build
+
+      - name: Деплой стека в кластер
+        run: docker stack deploy --resolve-image never -c docker-stack.yml tourbook
+
+      - name: Проверка работы кластера
+        run: |
+          for i in $(seq 1 36); do
+            curl -fs -o /dev/null http://localhost:8080/api/tours && break
+            sleep 5
+          done
+          docker stack services tourbook
+          curl -fs http://localhost:8080/ | grep TourBook > /dev/null
+          curl -fs http://localhost:8080/api/tours | grep title > /dev/null
+          curl -fs -X POST http://localhost:8080/api/bookings \
+            -H 'Content-Type: application/json' \
+            -d '{"tour_id": 1, "customer_name": "CD-test", "people": 1}'
+          curl -fs -H 'X-Admin-Password: admin123' http://localhost:8080/api/bookings | grep CD-test > /dev/null
+
+      - name: Состояние сервисов (только при ошибке)
+        if: failure()
+        run: |
+          docker stack ps tourbook --no-trunc
+          docker service logs tourbook_tours --tail 30
+          docker service logs tourbook_bookings --tail 30
+
+      - name: Удаление стека
+        if: always()
+        run: docker stack rm tourbook

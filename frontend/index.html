@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TourBook — бронирование туров</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>✈️ TourBook</h1>
+    <button class="light" id="admin-btn">Администратор</button>
+  </header>
+
+  <main>
+    <div class="grid" id="tours">Загрузка…</div>
+
+    <!-- Таблица бронирований: показывается после ввода пароля администратора -->
+    <section id="admin" hidden>
+      <h2>Бронирования</h2>
+      <table>
+        <thead><tr><th>№</th><th>Тур</th><th>Имя</th><th>Человек</th></tr></thead>
+        <tbody id="bookings"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- Окно бронирования -->
+  <dialog id="booking-dialog">
+    <form id="booking-form">
+      <h3 id="booking-title"></h3>
+      <label>Имя <input name="customer_name" required maxlength="100"></label>
+      <label>Количество человек <input name="people" type="number" min="1" value="1" required></label>
+      <p class="error" id="booking-error" hidden></p>
+      <div class="actions">
+        <button type="button" class="gray" id="booking-cancel">Отмена</button>
+        <button type="submit">Забронировать</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Окно входа администратора -->
+  <dialog id="admin-dialog">
+    <form id="admin-form">
+      <h3>Вход администратора</h3>
+      <label>Пароль <input name="password" type="password" required></label>
+      <p class="error" id="admin-error" hidden></p>
+      <div class="actions">
+        <button type="button" class="gray" id="admin-cancel">Отмена</button>
+        <button type="submit">Войти</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>

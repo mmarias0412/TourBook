@@ -1,0 +1,68 @@
+# Кластер Docker Swarm: docker stack deploy -c docker-stack.yml tourbook
+# Образы должны быть собраны заранее: docker compose build
+version: "3.9"
+
+services:
+  proxy:
+    image: tourbook-proxy:latest
+    ports:
+      - "8080:80"
+    networks: [public_net]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: on-failure }
+
+  frontend:
+    image: tourbook-frontend:latest
+    networks: [public_net]
+    deploy:
+      replicas: 2
+      restart_policy: { condition: on-failure }
+
+  tours:
+    image: tourbook-tours:latest
+    environment:
+      DB_HOST: db
+      DB_NAME: tourbook
+      DB_USER: tourbook
+      DB_PASSWORD: tourbook_pass
+    networks: [public_net, data_net]
+    deploy:
+      replicas: 2
+      restart_policy: { condition: on-failure }
+
+  bookings:
+    image: tourbook-bookings:latest
+    environment:
+      DB_HOST: db
+      DB_NAME: tourbook
+      DB_USER: tourbook
+      DB_PASSWORD: tourbook_pass
+      ADMIN_PASSWORD: admin123
+    networks: [public_net, data_net]
+    deploy:
+      replicas: 2
+      restart_policy: { condition: on-failure }
+
+  db:
+    image: tourbook-db:latest
+    environment:
+      POSTGRES_DB: tourbook
+      POSTGRES_USER: tourbook
+      POSTGRES_PASSWORD: tourbook_pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [data_net]
+    deploy:
+      replicas: 1
+      restart_policy: { condition: on-failure }
+
+networks:
+  public_net:
+    driver: overlay
+  data_net:
+    driver: overlay
+    internal: true
+
+volumes:
+  pgdata:
