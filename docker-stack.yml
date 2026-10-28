@@ -5,8 +5,12 @@ version: "3.9"
 services:
   proxy:
     image: tourbook-proxy:latest
+    # Порт публикуется напрямую на узле (mode: host), без встроенного балансировщика ingress
     ports:
-      - "8080:80"
+      - target: 80
+        published: 8080
+        protocol: tcp
+        mode: host
     networks: [public_net]
     deploy:
       replicas: 1
