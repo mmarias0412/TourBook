@@ -10,6 +10,7 @@ jobs:
   # ---------- CI: сборка образов и проверка работы 5 контейнеров ----------
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Получение кода
         uses: actions/checkout@v4
@@ -21,19 +22,19 @@ jobs:
         run: |
           # ждём, пока сервис туров начнёт отвечать (до 2,5 минут)
           for i in $(seq 1 30); do
-            curl -fs -o /dev/null http://localhost:8080/api/tours && break
+            curl -fs --max-time 5 -o /dev/null http://localhost:8080/api/tours && break
             sleep 5
           done
           # страница сайта (frontend через proxy)
-          curl -fs http://localhost:8080/ | grep TourBook > /dev/null
+          curl -fs --max-time 10 http://localhost:8080/ | grep TourBook > /dev/null
           # сервис туров (tours -> db)
-          curl -fs http://localhost:8080/api/tours | grep title > /dev/null
+          curl -fs --max-time 10 http://localhost:8080/api/tours | grep title > /dev/null
           # создание бронирования (bookings -> db)
-          curl -fs -X POST http://localhost:8080/api/bookings \
+          curl -fs --max-time 10 -X POST http://localhost:8080/api/bookings \
             -H 'Content-Type: application/json' \
             -d '{"tour_id": 1, "customer_name": "CI-test", "people": 2}'
           # список бронирований для администратора
-          curl -fs -H 'X-Admin-Password: admin123' http://localhost:8080/api/bookings | grep CI-test > /dev/null
+          curl -fs --max-time 10 -H 'X-Admin-Password: admin123' http://localhost:8080/api/bookings | grep CI-test > /dev/null
 
       - name: Логи контейнеров (только при ошибке)
         if: failure()
@@ -47,6 +48,7 @@ jobs:
   deploy:
     needs: build-and-test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Получение кода
         uses: actions/checkout@v4
@@ -62,24 +64,33 @@ jobs:
 
       - name: Проверка работы кластера
         run: |
+          # ждём ответа кластера (до 3 минут), каждую попытку показываем состояние контейнеров
           for i in $(seq 1 36); do
-            curl -fs -o /dev/null http://localhost:8080/api/tours && break
+            if curl -fs --max-time 5 -o /dev/null http://localhost:8080/api/tours; then
+              echo "Кластер отвечает"
+              break
+            fi
+            echo "--- попытка $i: кластер ещё не отвечает ---"
+            docker stack ps tourbook --no-trunc --format '{{.Name}} | {{.CurrentState}} | {{.Error}}'
             sleep 5
           done
           docker stack services tourbook
-          curl -fs http://localhost:8080/ | grep TourBook > /dev/null
-          curl -fs http://localhost:8080/api/tours | grep title > /dev/null
-          curl -fs -X POST http://localhost:8080/api/bookings \
+          curl -fs --max-time 10 http://localhost:8080/ | grep TourBook > /dev/null
+          curl -fs --max-time 10 http://localhost:8080/api/tours | grep title > /dev/null
+          curl -fs --max-time 10 -X POST http://localhost:8080/api/bookings \
             -H 'Content-Type: application/json' \
             -d '{"tour_id": 1, "customer_name": "CD-test", "people": 1}'
-          curl -fs -H 'X-Admin-Password: admin123' http://localhost:8080/api/bookings | grep CD-test > /dev/null
+          curl -fs --max-time 10 -H 'X-Admin-Password: admin123' http://localhost:8080/api/bookings | grep CD-test > /dev/null
 
       - name: Состояние сервисов (только при ошибке)
-        if: failure()
+        if: failure() || cancelled()
         run: |
+          docker stack services tourbook
           docker stack ps tourbook --no-trunc
-          docker service logs tourbook_tours --tail 30
-          docker service logs tourbook_bookings --tail 30
+          for s in proxy frontend tours bookings db; do
+            echo "===== логи tourbook_$s ====="
+            docker service logs tourbook_$s --tail 20 || true
+          done
 
       - name: Удаление стека
         if: always()

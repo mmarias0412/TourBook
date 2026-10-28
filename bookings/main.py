@@ -12,6 +12,7 @@ DB = dict(
     dbname=os.getenv("DB_NAME", "tourbook"),
     user=os.getenv("DB_USER", "tourbook"),
     password=os.getenv("DB_PASSWORD", "tourbook_pass"),
+    connect_timeout=5,
 )
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 
